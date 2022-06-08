@@ -25,13 +25,14 @@ namespace DotNetBot.ClipArt
 
 		[FunctionName("Home")]
 		public static IActionResult Home(
-			[HttpTrigger(AuthorizationLevel.Anonymous, "GET", Route = "default")] HttpRequest req
+			[HttpTrigger(AuthorizationLevel.Anonymous, "GET", Route = "default")] HttpRequest req,
+			ExecutionContext context
 		)
 		{
 
 			if (string.IsNullOrEmpty(_IndexHTML))
 			{
-				using var htmlStream = File.OpenRead("index.html");
+				using var htmlStream = File.OpenRead(Path.Combine(context.FunctionAppDirectory, "index.html"));
 				using var sr = new StreamReader(htmlStream);
 				_IndexHTML = sr.ReadToEndAsync().GetAwaiter().GetResult();
 			}
@@ -70,6 +71,7 @@ namespace DotNetBot.ClipArt
 				int width,
 				int height,
 				string color,
+				ExecutionContext context,
 				ILogger log)
 		{
 
@@ -77,15 +79,21 @@ namespace DotNetBot.ClipArt
 			if (!_Colors.ContainsKey(color.ToLowerInvariant()))
 				return new BadRequestObjectResult($"Invalid color requested.  Valid colors are: {string.Join(' ', _Colors.Keys)}");
 
-			if (!_Images.Any()) IdentifyImages();
+			if (!_Images.Any()) IdentifyImages(context);
 
 			log.LogInformation($"Creating a bot of size {width}x{height} with {color} background");
 
 			var imageFilename = _Images.OrderBy(_ => Guid.NewGuid()).First();
-			var encoder = new PngEncoder();
+			var encoder = new PngEncoder()
+			{
+				CompressionLevel = PngCompressionLevel.BestCompression,
+				TransparentColorMode = PngTransparentColorMode.Clear,
+				BitDepth = PngBitDepth.Bit8,
+				ColorType = PngColorType.Palette
+			};
 
 			using var output = new MemoryStream();
-			using var image = Image.Load($"images/{imageFilename}");
+			using var image = Image.Load(Path.Combine(context.FunctionAppDirectory, "images", imageFilename));
 
 			var divisor = image.Width / (decimal)width;
 			var targetHeight = Convert.ToInt32(Math.Round((decimal)(image.Height / divisor)));
@@ -98,7 +106,6 @@ namespace DotNetBot.ClipArt
 				x.Resize(new ResizeOptions() {
 					Mode = ResizeMode.Pad,
 					Size = new SixLabors.ImageSharp.Size(width, height),
-					
 				});
 				if (!color.Equals("none", StringComparison.CurrentCultureIgnoreCase)) 
 					x.BackgroundColor(_Colors[color].ToImageSharpColor());
@@ -118,10 +125,10 @@ namespace DotNetBot.ClipArt
 			
 		}
 
-		private static void IdentifyImages()
+		private static void IdentifyImages(ExecutionContext context)
 		{
 
-			var dirInfo = new DirectoryInfo("images");
+			var dirInfo = new DirectoryInfo(Path.Combine(context.FunctionAppDirectory, "images"));
 			_Images = dirInfo.EnumerateFiles()
 				.Where(f => f.Extension == ".png")
 				.Select(f => f.Name).ToArray();

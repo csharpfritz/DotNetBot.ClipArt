@@ -4,7 +4,7 @@
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="images\dotnet-bot.png" />
+    <None Remove="images\*" />
     <None Remove="index.html" />
   </ItemGroup>
   <ItemGroup>
